@@ -100,6 +100,39 @@
     for(const event of ['pause','ended'])film.addEventListener(event,()=>cinema.classList.remove('is-playing'));
     new IntersectionObserver(entries=>{if(!entries[0].isIntersecting&&!film.paused)film.pause()},{threshold:0}).observe(film);
   }
+
+  const stallPhoto=document.querySelector('.stall-photo');
+  let shower=[];
+  function clearShower(){for(const item of shower){item.animation.cancel();item.node.remove()}shower=[]}
+  stallPhoto?.addEventListener('click',()=>{
+    clearShower();
+    if(paused||preference.matches)return;
+    const bounds=stallPhoto.getBoundingClientRect();
+    for(let i=0;i<56;i++){
+      const node=document.createElement('span');
+      node.className='stall-sprinkle';node.setAttribute('aria-hidden','true');
+      const x=bounds.left+Math.random()*bounds.width;
+      const y=Math.max(0,bounds.top)+Math.random()*Math.min(bounds.height*.3,80);
+      node.style.left=x+'px';node.style.top=y+'px';node.style.background=colors[i%colors.length];
+      document.body.append(node);
+      const drift=(Math.random()-.5)*260;
+      const fall=Math.min(innerHeight-y+30,550);
+      const angle=Math.random()*360;
+      const animation=node.animate([
+        {transform:`translate(0,0) rotate(${angle}deg)`,opacity:0},
+        {transform:`translate(${drift*.2}px,-45px) rotate(${angle+70}deg)`,opacity:1,offset:.18},
+        {opacity:1,offset:.7},
+        {transform:`translate(${drift}px,${fall}px) rotate(${angle+360}deg)`,opacity:0}
+      ],{duration:1300+Math.random()*600,delay:Math.random()*180,easing:'ease-in'});
+      shower.push({node,animation});
+      animation.onfinish=()=>{node.remove();shower=shower.filter(item=>item.node!==node)};
+    }
+    document.querySelector('#sprinkle-status').textContent='A sprinkle shower at the Teadough stall!';
+  });
+  motion.addEventListener('click',clearShower);
+  preference.addEventListener('change',clearShower);
+  document.addEventListener('visibilitychange',()=>{if(document.hidden)clearShower()});
+
   resize();syncMotion();
 })();
 
