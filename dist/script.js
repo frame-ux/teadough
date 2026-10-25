@@ -10,6 +10,12 @@
   let pointer={x:-9999,y:-9999}, scrollY=window.scrollY,targetScroll=scrollY;
   let ripples=[],bounce=0,bounceV=0,lean=0,seed=94,extra=0;
   const random=()=>{seed=(seed*1664525+1013904223)>>>0;return seed/4294967296};
+  // Both the homepage and shower use the same curved stroke.
+  function paintSprinkle(context,p){
+    context.strokeStyle=p.color;context.lineWidth=p.width;context.lineCap='round';
+    context.beginPath();context.moveTo(-p.len/2,-1);
+    context.quadraticCurveTo(0,p.spin*8,p.len/2,1);context.stroke();
+  }
   function resize(){
     w=innerWidth;h=hero.offsetHeight;seed=94;
     const dpr=Math.min(devicePixelRatio||1,2);
@@ -51,7 +57,7 @@
       }
       ctx.save();ctx.translate(x+p.dx+rx,y+p.dy+ry);
       ctx.rotate(p.angle+(active?Math.sin(time*.95+p.phase)*.24+progress*p.spin*5+twist:0));
-      ctx.strokeStyle=p.color;ctx.lineWidth=p.width;ctx.lineCap='round';ctx.beginPath();ctx.moveTo(-p.len/2,-1);ctx.quadraticCurveTo(0,p.spin*8,p.len/2,1);ctx.stroke();ctx.restore();
+      paintSprinkle(ctx,p);ctx.restore();
     }
     if(active){
       // Damped spring: a soft squash, overshoot, then a quiet return to rest.
@@ -102,35 +108,52 @@
   }
 
   const stallPhoto=document.querySelector('.stall-photo');
-  let shower=[];
-  function clearShower(){for(const item of shower){item.animation.cancel();item.node.remove()}shower=[]}
+  let showerCanvas=null,showerFrame=0;
+  function clearShower(){
+    cancelAnimationFrame(showerFrame);showerFrame=0;
+    showerCanvas?.remove();showerCanvas=null;
+  }
   stallPhoto?.addEventListener('click',()=>{
     clearShower();
     if(paused||preference.matches)return;
-    const bounds=stallPhoto.getBoundingClientRect();
-    for(let i=0;i<56;i++){
-      const node=document.createElement('span');
-      node.className='stall-sprinkle';node.setAttribute('aria-hidden','true');
-      const x=bounds.left+Math.random()*bounds.width;
-      const y=Math.max(0,bounds.top)+Math.random()*Math.min(bounds.height*.3,80);
-      node.style.left=x+'px';node.style.top=y+'px';node.style.background=colors[i%colors.length];
-      document.body.append(node);
-      const drift=(Math.random()-.5)*260;
-      const fall=Math.min(innerHeight-y+30,550);
-      const angle=Math.random()*360;
-      const animation=node.animate([
-        {transform:`translate(0,0) rotate(${angle}deg)`,opacity:0},
-        {transform:`translate(${drift*.2}px,-45px) rotate(${angle+70}deg)`,opacity:1,offset:.18},
-        {opacity:1,offset:.7},
-        {transform:`translate(${drift}px,${fall}px) rotate(${angle+360}deg)`,opacity:0}
-      ],{duration:1300+Math.random()*600,delay:Math.random()*180,easing:'ease-in'});
-      shower.push({node,animation});
-      animation.onfinish=()=>{node.remove();shower=shower.filter(item=>item.node!==node)};
+    const overlay=document.createElement('canvas');
+    overlay.className='stall-shower';overlay.setAttribute('aria-hidden','true');
+    overlay.style.cssText='position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:20';
+    const width=innerWidth,height=innerHeight,dpr=Math.min(devicePixelRatio||1,2);
+    overlay.width=width*dpr;overlay.height=height*dpr;
+    const context=overlay.getContext('2d');
+    context.setTransform(dpr,0,0,dpr,0,0);
+    document.body.append(overlay);showerCanvas=overlay;
+    const count=Math.max(65,Math.min(150,Math.round(width*height/9000)));
+    const rain=Array.from({length:count},(_,i)=>({
+      x:(i+.5)/count*width,delay:Math.random()*1500,duration:2400+Math.random()*1000,
+      len:24+Math.random()*5,width:5.3+Math.random()*.5,
+      spin:(Math.random()-.5)*.65,color:colors[i%colors.length],
+      angle:Math.random()*Math.PI,drift:(Math.random()-.5)*90
+    }));
+    let started=null;
+    function fall(now){
+      if(started===null)started=now;
+      const elapsed=now-started;
+      context.clearRect(0,0,width,height);
+      let remaining=false;
+      for(const p of rain){
+        const progress=(elapsed-p.delay)/p.duration;
+        if(progress<1)remaining=true;
+        if(progress<0||progress>1)continue;
+        const x=(p.x+Math.sin(progress*Math.PI)*p.drift+width)%width;
+        const y=-35+(height+70)*(progress*.7+progress*progress*.3);
+        context.save();context.translate(x,y);context.rotate(p.angle+progress*p.spin*4);
+        paintSprinkle(context,p);context.restore();
+      }
+      if(remaining)showerFrame=requestAnimationFrame(fall);else clearShower();
     }
-    document.querySelector('#sprinkle-status').textContent='A sprinkle shower at the Teadough stall!';
+    showerFrame=requestAnimationFrame(fall);
+    document.querySelector('#sprinkle-status').textContent='A sprinkle shower!';
   });
   motion.addEventListener('click',clearShower);
   preference.addEventListener('change',clearShower);
+  addEventListener('resize',clearShower,{passive:true});
   document.addEventListener('visibilitychange',()=>{if(document.hidden)clearShower()});
 
   resize();syncMotion();
